@@ -1,29 +1,36 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"rationalgo/internal/config"
 	"rationalgo/internal/repository"
+	"rationalgo/internal/services/policy"
+	"rationalgo/internal/services/reasoning"
+	vendorsvc "rationalgo/internal/services/vendor"
 )
 
 // Server is the HTTP API for the audit dashboard.
 type Server struct {
-	cfg   config.Config
-	store *repository.Store
-	mux   *http.ServeMux
+	cfg          config.Config
+	store        *repository.Store
+	reasoningSvc *reasoning.Service
+	mux          *http.ServeMux
 }
 
 // NewServer creates an API server with seeded in-memory state.
-func NewServer(cfg config.Config) *Server {
+func NewServer(cfg config.Config, reasoningSvc *reasoning.Service) *Server {
 	s := &Server{
-		cfg:   cfg,
-		store: repository.NewStore(),
-		mux:   http.NewServeMux(),
+		cfg:          cfg,
+		store:        repository.NewStore(),
+		reasoningSvc: reasoningSvc,
+		mux:          http.NewServeMux(),
 	}
 	s.routes()
 	return s
@@ -33,6 +40,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /api/state", s.handleState)
 	s.mux.HandleFunc("POST /api/state/reset", s.handleReset)
+	s.mux.HandleFunc("POST /api/decide", s.handleDecide)
 }
 
 // ListenAndServe starts the HTTP server with CORS for local frontend dev.
@@ -77,4 +85,54 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		fmt.Fprintf(w, `{"error":%q}`, strings.ReplaceAll(err.Error(), `"`, `\"`))
 	}
+}
+
+// decideRequest is the body for POST /api/decide.
+type decideRequest struct {
+	Intent    string `json:"intent"`
+	AgentID   string `json:"agent_id"`
+	SessionID string `json:"session_id"`
+}
+
+// handleDecide runs the full reasoning pipeline and returns a DecisionRecord.
+func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
+	var req decideRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if req.Intent == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "intent is required"})
+		return
+	}
+	if req.AgentID == "" {
+		req.AgentID = "rationalgo-agent-01"
+	}
+	if req.SessionID == "" {
+		req.SessionID = fmt.Sprintf("sess-%d", time.Now().UnixNano())
+	}
+
+	vendors := vendorsvc.GetAll()
+
+	// Evaluate policy against the primary (paid) vendor with default budget parameters.
+	pol := policy.Evaluate(
+		vendors[0],
+		vendors[0].PriceEURQ,
+		0.0,
+		10.0,
+		[]string{"GoPlausible WeatherAPI", "OpenMeteo Free"},
+		vendorsvc.GetPriceHistory(),
+	)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
+	defer cancel()
+
+	record, err := s.reasoningSvc.GenerateDecision(ctx, req.AgentID, req.SessionID, req.Intent, vendors, pol)
+	if err != nil {
+		log.Printf("reasoning: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, record)
 }

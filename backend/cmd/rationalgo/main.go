@@ -7,6 +7,7 @@ import (
 	"rationalgo/internal/api"
 	"rationalgo/internal/config"
 	algosvc "rationalgo/internal/services/algorand"
+	"rationalgo/internal/services/reasoning"
 	x402svc "rationalgo/internal/services/x402"
 	"rationalgo/internal/util"
 )
@@ -41,9 +42,10 @@ func main() {
 func runServe(cfg config.Config) {
 	fmt.Println("RationAlgo — Phase 1 API")
 	fmt.Printf("listening:   %s\n", cfg.HTTPAddr)
-	fmt.Println("endpoints:   GET /health  GET /api/state  POST /api/state/reset")
+	fmt.Println("endpoints:   GET /health  GET /api/state  POST /api/state/reset  POST /api/decide")
 	fmt.Println()
-	if err := api.NewServer(cfg).ListenAndServe(); err != nil {
+	reasoningSvc := reasoning.New(cfg.AnthropicKey)
+	if err := api.NewServer(cfg, reasoningSvc).ListenAndServe(); err != nil {
 		fail(err)
 	}
 }
