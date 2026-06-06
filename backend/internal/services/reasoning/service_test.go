@@ -9,7 +9,7 @@ import (
 
 	"rationalgo/internal/services/policy"
 	"rationalgo/internal/services/reasoning"
-	vendorsvc "rationalgo/internal/services/vendor"
+	"rationalgo/internal/services/vendor"
 )
 
 func TestGenerateDecision_Integration(t *testing.T) {
@@ -19,14 +19,15 @@ func TestGenerateDecision_Integration(t *testing.T) {
 	}
 
 	svc := reasoning.New(key)
-	vendors := vendorsvc.GetAll()
+	vendorSvc := vendor.NewService()
+	vendors := vendorSvc.GetDemoWeatherVendors()
 	pol := policy.Evaluate(
 		vendors[0],
 		vendors[0].PriceEURQ,
 		0.0,
 		10.0,
-		[]string{"GoPlausible WeatherAPI", "OpenMeteo Free"},
-		vendorsvc.GetPriceHistory(),
+		[]string{"GoPlausible Weather", "OpenMeteo"},
+		vendorSvc.GetPriceHistory(),
 	)
 
 	record, err := svc.GenerateDecision(

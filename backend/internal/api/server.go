@@ -17,7 +17,6 @@ import (
 	"rationalgo/internal/services/policy"
 	"rationalgo/internal/services/reasoning"
 	"rationalgo/internal/services/vendor"
-	vendorsvc "rationalgo/internal/services/vendor"
 	"rationalgo/internal/services/x402"
 )
 
@@ -36,7 +35,7 @@ func NewServer(cfg config.Config, reasoningSvc *reasoning.Service) *Server {
 	s := &Server{
 		cfg:          cfg,
 		store:        store,
-		deps:         buildDeps(cfg, store),
+		deps:         buildDeps(cfg, store, reasoningSvc),
 		reasoningSvc: reasoningSvc,
 		mux:          http.NewServeMux(),
 	}
@@ -44,7 +43,7 @@ func NewServer(cfg config.Config, reasoningSvc *reasoning.Service) *Server {
 	return s
 }
 
-func buildDeps(cfg config.Config, store *repository.Store) scenario.Deps {
+func buildDeps(cfg config.Config, store *repository.Store, reasoningSvc *reasoning.Service) scenario.Deps {
 	vendors := vendor.NewService()
 	state := store.State()
 
@@ -54,7 +53,7 @@ func buildDeps(cfg config.Config, store *repository.Store) scenario.Deps {
 	}
 
 	return scenario.Deps{
-		Reasoning:  reasoning.NewService(),
+		Reasoning:  reasoningSvc,
 		Outcome:    outcome.NewService(),
 		Algorand:   algClient,
 		X402:       x402.NewService(cfg),
@@ -116,7 +115,7 @@ func (s *Server) handleDecisions(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleReset(w http.ResponseWriter, r *http.Request) {
 	s.store.Reset()
-	s.deps = buildDeps(s.cfg, s.store)
+	s.deps = buildDeps(s.cfg, s.store, s.reasoningSvc)
 	writeJSON(w, http.StatusOK, s.store.State())
 }
 
@@ -185,7 +184,9 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		req.SessionID = fmt.Sprintf("sess-%d", time.Now().UnixNano())
 	}
 
-	vendors := vendorsvc.GetAll()
+	vendorSvc := vendor.NewService()
+	vendors := vendorSvc.GetDemoWeatherVendors()
+	state := s.store.State()
 
 	// Evaluate policy against the primary (paid) vendor with default budget parameters.
 	pol := policy.Evaluate(
@@ -193,8 +194,8 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		vendors[0].PriceEURQ,
 		0.0,
 		10.0,
-		[]string{"GoPlausible WeatherAPI", "OpenMeteo Free"},
-		vendorsvc.GetPriceHistory(),
+		state.AllowedVendors,
+		vendorSvc.GetPriceHistory(),
 	)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)

@@ -8,13 +8,14 @@ import (
 
 func TestEvaluate(t *testing.T) {
 	vendor := models.VendorOption{
-		Name:      "GoPlausible WeatherAPI",
+		ID:        "goplausible-weather",
+		Name:      "GoPlausible Weather",
 		PriceEURQ: 0.001,
 	}
 	history := map[string][]float64{
-		"GoPlausible WeatherAPI": {0.001, 0.001, 0.001, 0.0011, 0.001, 0.001, 0.001},
+		"goplausible-weather": {0.001, 0.001, 0.001, 0.0011, 0.001, 0.001, 0.001},
 	}
-	allowed := []string{"GoPlausible WeatherAPI"}
+	allowed := []string{"GoPlausible Weather"}
 
 	tests := []struct {
 		name        string
@@ -62,11 +63,13 @@ func TestEvaluate(t *testing.T) {
 		},
 		{
 			name:        "price anomaly triggered",
-			amount:      0.01, // 10× average of ~0.001
+			amount:      0.001,
 			dailySpent:  0.0,
 			dailyLimit:  10.0,
 			allowedList: allowed,
-			history:     history,
+			history: map[string][]float64{
+				"goplausible-weather": {0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.01},
+			},
 			wantBudget:  true,
 			wantVendor:  true,
 			wantAnomaly: true,
@@ -79,15 +82,15 @@ func TestEvaluate(t *testing.T) {
 			if got.BudgetOK != tt.wantBudget {
 				t.Errorf("BudgetOK: got %v, want %v", got.BudgetOK, tt.wantBudget)
 			}
-			if got.VendorOK != tt.wantVendor {
-				t.Errorf("VendorOK: got %v, want %v", got.VendorOK, tt.wantVendor)
+			if got.VendorAllowed != tt.wantVendor {
+				t.Errorf("VendorAllowed: got %v, want %v", got.VendorAllowed, tt.wantVendor)
 			}
 			if got.PriceAnomaly != tt.wantAnomaly {
 				t.Errorf("PriceAnomaly: got %v, want %v", got.PriceAnomaly, tt.wantAnomaly)
 			}
 			if !tt.wantBudget || !tt.wantVendor || tt.wantAnomaly {
-				if got.Reason == "" {
-					t.Error("Reason must be non-empty on failure/anomaly")
+				if got.BlockReason == "" {
+					t.Error("BlockReason must be non-empty on failure/anomaly")
 				}
 			}
 		})

@@ -13,6 +13,11 @@ import (
 	"rationalgo/internal/services/decision"
 )
 
+// DemoIntent is the fixed hero-scenario task for Frankfurt drone weather.
+func DemoIntent() string {
+	return "Should drone deliveries operate in Frankfurt in the next 2 hours?"
+}
+
 const anthropicAPI = "https://api.anthropic.com/v1/messages"
 
 // Service calls the Anthropic API to produce a structured DecisionRecord.
@@ -69,6 +74,54 @@ type reasoningOutput struct {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+
+// GenerateDemoDecision returns a deterministic decision for the hero demo (no LLM).
+func (s *Service) GenerateDemoDecision(
+	ctx context.Context,
+	intent string,
+	vendors []models.VendorOption,
+) (*models.DecisionRecord, error) {
+	_ = ctx
+	if len(vendors) == 0 {
+		return nil, fmt.Errorf("reasoning: no vendors available")
+	}
+
+	chosen := vendors[0]
+	for _, v := range vendors {
+		if v.ID == "goplausible-weather" {
+			chosen = v
+			break
+		}
+	}
+
+	var alts []models.Alternative
+	for _, v := range vendors {
+		if v.ID == chosen.ID {
+			continue
+		}
+		alts = append(alts, models.Alternative{
+			Vendor:         v,
+			ReasonRejected: fmt.Sprintf("Lower trust score (%.0f vs %.0f)", v.TrustScore, chosen.TrustScore),
+		})
+	}
+
+	record := &models.DecisionRecord{
+		ID:            fmt.Sprintf("dec-%d", models.NowMillis()),
+		TaskIntent:    intent,
+		VendorChosen:  chosen,
+		Alternatives:  alts,
+		ExpectedValue: "Precipitation forecast within 2h enables safe drone ops in Frankfurt.",
+		Confidence:    0.87,
+		Status:        models.StatusPending,
+		Timestamp:     models.NowMillis(),
+	}
+	hash, err := decision.HashCanonicalJSON(record)
+	if err != nil {
+		return nil, fmt.Errorf("reasoning: hash demo record: %w", err)
+	}
+	record.ReasoningHash = hash
+	return record, nil
+}
 
 // GenerateDecision calls the LLM, parses its JSON output, then assembles a
 // full DecisionRecord by merging reasoning output with policy and computed fields.
@@ -168,9 +221,9 @@ func assembleRecord(
 	out *reasoningOutput,
 	pol models.PolicyResult,
 ) *models.DecisionRecord {
-	status := "APPROVED"
-	if !pol.BudgetOK || !pol.VendorOK || pol.PriceAnomaly {
-		status = "BLOCKED"
+	status := models.StatusApproved
+	if !pol.Approved {
+		status = models.StatusBlocked
 	}
 
 	// Hash only the stable reasoning fields, not CommittedTx or Outcome.
@@ -185,6 +238,7 @@ func assembleRecord(
 	reasoningHash, _ := decision.HashCanonicalJSON(hashInput)
 
 	return &models.DecisionRecord{
+		ID:            fmt.Sprintf("dec-%d", models.NowMillis()),
 		AgentID:       agentID,
 		SessionID:     sessionID,
 		TaskIntent:    intent,
@@ -195,7 +249,7 @@ func assembleRecord(
 		Policy:        pol,
 		Status:        status,
 		ReasoningHash: reasoningHash,
-		Timestamp:     time.Now(),
+		Timestamp:     models.NowMillis(),
 		// CommittedTx and Outcome are set later by the orchestrator.
 	}
 }
@@ -213,17 +267,18 @@ func buildPrompt(intent string, vendors []models.VendorOption, policy models.Pol
 	sb.WriteString("Available vendors:\n")
 	for _, v := range vendors {
 		sb.WriteString(fmt.Sprintf(
-			"- %s | price: %.4f EURQ | accuracy: %.0f%% | free: %v | notes: %s\n",
-			v.Name, v.PriceEURQ, v.AccuracyScore*100, v.IsFree, v.Notes,
+			"- %s | id: %s | price: %.4f EURQ | trust: %.0f | success: %.0f%% | %s\n",
+			v.Name, v.ID, v.PriceEURQ, v.TrustScore, v.SuccessRate*100, v.Description,
 		))
 	}
 
 	sb.WriteString("\nPolicy result:\n")
+	sb.WriteString(fmt.Sprintf("- Approved: %v\n", policy.Approved))
 	sb.WriteString(fmt.Sprintf("- Budget OK: %v\n", policy.BudgetOK))
-	sb.WriteString(fmt.Sprintf("- Vendor on allowlist: %v\n", policy.VendorOK))
+	sb.WriteString(fmt.Sprintf("- Vendor on allowlist: %v\n", policy.VendorAllowed))
 	sb.WriteString(fmt.Sprintf("- Price anomaly: %v\n", policy.PriceAnomaly))
-	if policy.Reason != "" {
-		sb.WriteString(fmt.Sprintf("- Reason: %s\n", policy.Reason))
+	if policy.BlockReason != "" {
+		sb.WriteString(fmt.Sprintf("- Block reason: %s\n", policy.BlockReason))
 	}
 
 	sb.WriteString(`
@@ -232,24 +287,26 @@ Exact structure required:
 
 {
   "VendorChosen": {
+    "id": "...",
     "name": "...",
     "url": "...",
     "price_eurq": 0.001,
-    "is_free": false,
-    "accuracy_score": 0.91,
-    "notes": "..."
+    "trust_score": 91,
+    "success_rate": 0.91,
+    "description": "..."
   },
   "Alternatives": [
     {
       "vendor": {
+        "id": "...",
         "name": "...",
         "url": "...",
         "price_eurq": 0.0,
-        "is_free": true,
-        "accuracy_score": 0.64,
-        "notes": "..."
+        "trust_score": 64,
+        "success_rate": 0.64,
+        "description": "..."
       },
-      "reason_rejected": "One sentence. Reference the actual accuracy or price data."
+      "reason_rejected": "One sentence. Reference the actual trust score or price data."
     }
   ],
   "ExpectedValue": "One sentence describing the concrete benefit expected.",
