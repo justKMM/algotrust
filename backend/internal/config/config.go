@@ -1,0 +1,59 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"strings"
+)
+
+// WalletAddressPlaceholder is the default sentinel in .env before you paste a real address.
+const WalletAddressPlaceholder = "PASTE_YOUR_PERA_WALLET_ADDRESS_HERE"
+
+// Config holds runtime settings loaded from the environment.
+type Config struct {
+	WalletAddress string
+	AlgodToken    string
+	Mnemonic      string
+	AlgodURL      string
+	IndexerURL    string
+	IndexerToken  string
+	X402ProbeURL  string
+	HTTPAddr      string
+}
+
+// Load reads configuration from environment variables.
+func Load() (Config, error) {
+	return Config{
+		WalletAddress: strings.TrimSpace(os.Getenv("RATIONALGO_WALLET_ADDRESS")),
+		AlgodToken:    strings.TrimSpace(os.Getenv("RATIONALGO_ALGOD_TOKEN")),
+		Mnemonic:      strings.TrimSpace(os.Getenv("RATIONALGO_MNEMONIC")),
+		AlgodURL:      envOr("RATIONALGO_ALGOD_URL", "https://testnet-api.algonode.cloud"),
+		IndexerURL:    envOr("RATIONALGO_INDEXER_URL", "https://testnet-idx.algonode.cloud"),
+		IndexerToken:  strings.TrimSpace(os.Getenv("RATIONALGO_INDEXER_TOKEN")),
+		X402ProbeURL:  envOr("RATIONALGO_X402_PROBE_URL", "https://example.x402.goplausible.xyz/api/json"),
+		HTTPAddr:      envOr("RATIONALGO_HTTP_ADDR", ":8080"),
+	}, nil
+}
+
+// WalletConfigured reports whether a real wallet address is set.
+func (c Config) WalletConfigured() bool {
+	return c.WalletAddress != "" && c.WalletAddress != WalletAddressPlaceholder
+}
+
+// ValidateForSpike checks fields required for Phase 0 integration spikes.
+func (c Config) ValidateForSpike() error {
+	if !c.WalletConfigured() {
+		return fmt.Errorf("set RATIONALGO_WALLET_ADDRESS in backend/.env (your Pera Testnet address)")
+	}
+	if c.Mnemonic == "" {
+		return fmt.Errorf("set RATIONALGO_MNEMONIC in backend/.env (25-word passphrase from Pera)")
+	}
+	return nil
+}
+
+func envOr(key, fallback string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return fallback
+}
