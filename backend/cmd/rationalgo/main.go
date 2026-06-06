@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"rationalgo/internal/api"
 	"rationalgo/internal/config"
 	algosvc "rationalgo/internal/services/algorand"
 	x402svc "rationalgo/internal/services/x402"
@@ -26,12 +27,24 @@ func main() {
 	switch os.Args[1] {
 	case "status":
 		printStatus(cfg)
+	case "serve":
+		runServe(cfg)
 	case "spike":
 		runSpike(cfg, os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", os.Args[1])
 		printUsage()
 		os.Exit(2)
+	}
+}
+
+func runServe(cfg config.Config) {
+	fmt.Println("RationAlgo — Phase 1 API")
+	fmt.Printf("listening:   %s\n", cfg.HTTPAddr)
+	fmt.Println("endpoints:   GET /health  GET /api/state  POST /api/state/reset")
+	fmt.Println()
+	if err := api.NewServer(cfg).ListenAndServe(); err != nil {
+		fail(err)
 	}
 }
 
@@ -96,13 +109,13 @@ func spikeX402(cfg config.Config) {
 }
 
 func printStatus(cfg config.Config) {
-	fmt.Println("RationAlgo — Phase 0")
+	fmt.Println("RationAlgo — Phase 1")
 	fmt.Println()
 	fmt.Printf("wallet:      %s\n", displayWallet(cfg))
 	fmt.Printf("algod:       %s\n", cfg.AlgodURL)
 	fmt.Printf("algod token: %s\n", displayToken(cfg.AlgodToken))
 	fmt.Printf("x402 probe:  %s\n", cfg.X402ProbeURL)
-	fmt.Printf("http addr:   %s (Phase 1+)\n", cfg.HTTPAddr)
+	fmt.Printf("http addr:   %s (go run ./cmd/rationalgo serve)\n", cfg.HTTPAddr)
 	fmt.Println()
 	if err := cfg.ValidateForSpike(); err != nil {
 		fmt.Printf("spike ready: no — %v\n", err)
@@ -133,6 +146,7 @@ func displayToken(token string) string {
 func printUsage() {
 	fmt.Println(`Usage:
   go run ./cmd/rationalgo                 # config status
+  go run ./cmd/rationalgo serve           # HTTP API for dashboard (Phase 1)
   go run ./cmd/rationalgo spike all       # Algorand commit + x402 probe
   go run ./cmd/rationalgo spike algorand  # testnet hash commitment only
   go run ./cmd/rationalgo spike x402      # unpaid 402 probe only

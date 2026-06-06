@@ -30,7 +30,7 @@ func Load() (Config, error) {
 		AlgodURL:      envOr("RATIONALGO_ALGOD_URL", "https://testnet-api.algonode.cloud"),
 		IndexerURL:    envOr("RATIONALGO_INDEXER_URL", "https://testnet-idx.algonode.cloud"),
 		IndexerToken:  strings.TrimSpace(os.Getenv("RATIONALGO_INDEXER_TOKEN")),
-		X402ProbeURL:  envOr("RATIONALGO_X402_PROBE_URL", "https://example.x402.goplausible.xyz/api/json"),
+		X402ProbeURL:  envOr("RATIONALGO_X402_PROBE_URL", "https://example.x402.goplausible.xyz/avm/weather"),
 		HTTPAddr:      envOr("RATIONALGO_HTTP_ADDR", ":8080"),
 	}, nil
 }
@@ -47,6 +47,10 @@ func (c Config) ValidateForSpike() error {
 	}
 	if c.Mnemonic == "" {
 		return fmt.Errorf("set RATIONALGO_MNEMONIC in backend/.env (25-word passphrase from Pera)")
+	}
+	words := len(strings.Fields(c.Mnemonic))
+	if words != 25 {
+		return fmt.Errorf("RATIONALGO_MNEMONIC must be exactly 25 words (got %d) — copy the full passphrase from Pera → Settings → Security", words)
 	}
 	return nil
 }
