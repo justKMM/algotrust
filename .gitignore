@@ -1,0 +1,7 @@
+# Cursor
+.cursor
+
+# React frontend
+frontend/node_modules
+
+# Go backend
