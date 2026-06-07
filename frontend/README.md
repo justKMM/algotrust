@@ -54,7 +54,7 @@ src/
     api/                       # (reserved) HTTP handlers — webhooks, x402 callbacks
   components/
     mission-control/
-      TopBar.tsx               # brand, api-live dot, Execute Flow / Anomaly / Reset
+      TopBar.tsx               # brand, budget tier picker, api-live dot, Execute Flow / Anomaly / Reset
       ReasoningFeed.tsx        # left column — chronological agent events (scrollable)
       ActiveDecisionCard.tsx   # center column — current decision, KV rows, policy checks
       TrustPipeline.tsx        # right column — 6-stage vertical ladder
@@ -71,6 +71,7 @@ src/
     types.ts                   # DecisionRecord, ScenarioEvent, PIPELINE_STAGES
     api.ts                     # fetch helpers: health, state, reset, scenario SSE stream
     mapBackend.ts              # backend DecisionRecord / Decision → UI DecisionRecord
+    budget.ts                  # tier labels + EUR amounts (cheapass / mid / luxury)
     mock/
       generators.ts            # seeded PRNG, algoTx(), shortId()
       decisions.ts             # seedHistory() — used when VITE_USE_API=false
@@ -125,16 +126,23 @@ PIPELINE_STAGES (ordered): reasoning → policy → commit-pre → payment → v
 When the API is reachable (`VITE_USE_API` not `false`, backend `serve` running):
 
 1. **Mount** — `TopBar` calls `hydrate()` → `GET /health` + `GET /api/state` → populates `history`.
-2. **Execute Flow** — `runScenario('normal')` → `POST /api/scenario/run` (streaming fetch body).
-3. Each SSE frame is `{ "type": "<event>", "payload": … }` from `backend/internal/scenario/hero.go`.
-4. `handleBackendEvent` in `useMissionStore.ts`:
+2. **Budget tier** — picker in `TopBar` sets `budgetTier` in the store (default **Mid** / €10).
+3. **Execute Flow** — `runScenario('normal')` → `POST /api/scenario/run?budget=<tier>` (streaming fetch body).
+4. Each SSE frame is `{ "type": "<event>", "payload": … }` from `backend/internal/scenario/hero.go`.
+5. `handleBackendEvent` in `useMissionStore.ts`:
    - **Advance `pipelineStage`** (0…6) — drives `TrustPipeline`.
    - **Push a `ScenarioEvent`** — appears in `ReasoningFeed`.
    - **Patch `activeDecision`** — e.g. set `txPre`, flip `outcomeStatus`.
-5. Each completed purchase (`decision.outcome` or `alert.fired` after `decision.blocked`) is prepended to `history` and metrics are recomputed.
-6. **`research.summary`** marks the run complete; the store re-syncs from `GET /api/state`.
+6. Each completed purchase (`decision.outcome` or `alert.fired` after `decision.blocked`) is prepended to `history` and metrics are recomputed.
+7. **`research.summary`** marks the run complete; the store re-syncs from `GET /api/state`.
 
-**Anomaly** is the same flow with `POST /api/scenario/run?scenario=anomaly` (first knapsack pick gets a 10× price injection → policy block).
+**Anomaly** is the same flow with `POST /api/scenario/run?scenario=anomaly&budget=<tier>` (first knapsack pick gets a 10× price injection → policy block).
+
+| Tier | `budget` param | EUR envelope |
+|---|---|---|
+| Cheapass | `cheapass` | €5 |
+| Mid | `mid` | €10 |
+| Luxury Pro VIP | `luxury` | €15 |
 
 **Reset** clears live UI state and calls `POST /api/state/reset`, then reloads history.
 
@@ -199,8 +207,8 @@ The frontend talks to the **Go backend** at `VITE_API_URL` (default `http://loca
 | GET | `/health` | Liveness — top bar **api live** / **offline** |
 | GET | `/api/state` | Hydrate `history` on mount and after each scenario run |
 | POST | `/api/state/reset` | Reset server seed data; reload history |
-| POST | `/api/scenario/run` | Hero demo SSE stream (normal) |
-| POST | `/api/scenario/run?scenario=anomaly` | Hero demo with price anomaly on first purchase |
+| POST | `/api/scenario/run?budget=<tier>` | Hero demo SSE stream (normal); `budget` = `cheapass` \| `mid` \| `luxury` |
+| POST | `/api/scenario/run?scenario=anomaly&budget=<tier>` | Hero demo with price anomaly on first purchase |
 
 Implementation: `src/lib/api.ts` (`runScenarioStream` parses SSE `data:` lines from a POST response body — **not** `EventSource`, which only supports GET).
 
@@ -299,7 +307,7 @@ history are used instead.
 | Want to change… | File |
 |---|---|
 | Color tokens / typography / panel heights | `src/styles.css` |
-| Top bar actions or api-live indicator | `src/components/mission-control/TopBar.tsx` |
+| Top bar, budget tier picker, api-live | `src/components/mission-control/TopBar.tsx` + `src/lib/budget.ts` |
 | Add a stage to the pipeline | `src/lib/types.ts` (`PIPELINE_STAGES`) + `TrustPipeline.tsx` |
 | Add a new event type | `src/lib/types.ts` (`ScenarioEventType`) + `ReasoningFeed.tsx` (icon/tone) |
 | Wire backend / change event handling | `src/hooks/useMissionStore.ts`, `src/lib/api.ts`, `src/lib/mapBackend.ts` |

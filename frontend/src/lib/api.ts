@@ -1,3 +1,5 @@
+import type { BudgetTier } from "@/lib/budget";
+
 const defaultBase = "http://localhost:8080";
 
 export function apiBase(): string {
@@ -133,13 +135,15 @@ function parseSSEChunk(chunk: string): BackendScenarioEvent[] {
 
 export async function runScenarioStream(
   kind: "normal" | "anomaly",
+  budget: BudgetTier,
   onEvent: (event: BackendScenarioEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const url =
-    kind === "anomaly"
-      ? `${apiBase()}/api/scenario/run?scenario=anomaly`
-      : `${apiBase()}/api/scenario/run`;
+  const params = new URLSearchParams({ budget });
+  if (kind === "anomaly") {
+    params.set("scenario", "anomaly");
+  }
+  const url = `${apiBase()}/api/scenario/run?${params}`;
 
   const res = await fetch(url, { method: "POST", signal });
   if (!res.ok) {

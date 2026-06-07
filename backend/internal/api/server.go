@@ -197,6 +197,19 @@ func (s *Server) handleScenarioRun(w http.ResponseWriter, r *http.Request) {
 		scenarioType = scenario.ScenarioAnomaly
 	}
 
+	deps := s.deps
+	if tier := r.URL.Query().Get("budget"); tier != "" {
+		limit, ok := scenario.BudgetEURQ(tier)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "budget must be one of: cheapass, mid, luxury",
+			})
+			return
+		}
+		deps.DailyLimit = limit
+		deps.DailySpent = 0
+	}
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
@@ -207,7 +220,7 @@ func (s *Server) handleScenarioRun(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	events, err := scenario.Run(r.Context(), scenarioType, s.deps)
+	events, err := scenario.Run(r.Context(), scenarioType, deps)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

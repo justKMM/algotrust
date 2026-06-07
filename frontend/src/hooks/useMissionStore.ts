@@ -11,6 +11,7 @@ import {
   type BackendScenarioEvent,
 } from "@/lib/api";
 import { mapBackendDecision, mapBackendRecord, mergeDecisionRecord } from "@/lib/mapBackend";
+import { budgetEur, type BudgetTier } from "@/lib/budget";
 import { buildScenario, type ScenarioKind } from "@/lib/mock/scenarios";
 import { seedHistory } from "@/lib/mock/decisions";
 
@@ -30,11 +31,13 @@ interface MissionState {
   selectedDecisionId: string | null;
   running: boolean;
   apiLive: boolean;
+  budgetTier: BudgetTier;
   error: string | null;
   _timers: ReturnType<typeof setTimeout>[];
   _abort: AbortController | null;
 
   hydrate: () => Promise<void>;
+  setBudgetTier: (tier: BudgetTier) => void;
   runScenario: (kind: ScenarioKind) => void;
   reset: () => void;
   selectDecision: (id: string | null) => void;
@@ -70,9 +73,12 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   selectedDecisionId: null,
   running: false,
   apiLive: false,
+  budgetTier: "mid",
   error: null,
   _timers: [],
   _abort: null,
+
+  setBudgetTier: (tier) => set({ budgetTier: tier }),
 
   hydrate: async () => {
     if (!isApiConfigured()) return;
@@ -362,17 +368,12 @@ async function runLiveScenario(
     _abort: abort,
   });
 
-  let budget: number | undefined;
-  try {
-    const dashboard = await fetchDashboardState();
-    budget = dashboard.dailyLimit;
-  } catch {
-    // scenario still runs; policy detail strings omit budget ceiling
-  }
+  const budget = budgetEur(get().budgetTier);
 
   try {
     await runScenarioStream(
       kind,
+      get().budgetTier,
       (event) => handleBackendEvent(event, set, get, budget),
       abort.signal,
     );

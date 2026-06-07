@@ -32,7 +32,15 @@ Built for the [Algorand x402 Agentic Commerce Hackathon](https://luma.com/agenti
 
 ## Hero demo
 
-**Task:** *"Research Atlas Robotics GmbH within a €1.00 data budget — which paid sources are worth buying?"*
+**Task:** *"Research Atlas Robotics GmbH within a data budget — which paid sources are worth buying?"*
+
+Pick a budget tier in Mission Control (or pass `?budget=` on the API):
+
+| Tier | Budget |
+|------|--------|
+| **Cheapass** | €5 |
+| **Mid** | €10 (default) |
+| **Luxury Pro VIP** | €15 |
 
 RationAlgo hosts its own **x402-protected company-research marketplace**: 10 priced
 `/company/*` endpoints (basic info, industry, top products, reviews, competitors, news
@@ -52,11 +60,14 @@ Trigger via API or the dashboard (**`serve` must be running** — the hero demo 
 
 ```bash
 go run ./cmd/rationalgo serve   # terminal 1
-curl.exe -N -X POST "http://localhost:8080/api/scenario/run"
-curl.exe -N -X POST "http://localhost:8080/api/scenario/run?scenario=anomaly"
+curl.exe -N -X POST "http://localhost:8080/api/scenario/run?budget=mid"
+curl.exe -N -X POST "http://localhost:8080/api/scenario/run?budget=cheapass"
+curl.exe -N -X POST "http://localhost:8080/api/scenario/run?scenario=anomaly&budget=luxury"
 ```
 
-Or start the frontend (`cd frontend && npm run dev`) and click **Execute Flow** / **Anomaly** in Mission Control.
+`budget` must be `cheapass`, `mid`, or `luxury`. Omit it to use the dashboard seed limit (€10).
+
+Or start the frontend (`cd frontend && npm run dev`), choose a budget tier in the top bar, then click **Execute Flow** / **Anomaly**.
 
 On PowerShell, use `curl.exe` (not `curl` — that's an alias for `Invoke-WebRequest` and doesn't support `-N`).
 
@@ -213,8 +224,8 @@ decision history from the backend when the run completes. **Anomaly** appends
 | GET | `/api/state` | Full dashboard state |
 | GET | `/api/decisions` | Decision feed only |
 | POST | `/api/state/reset` | Reset to seed data |
-| POST | `/api/scenario/run` | SSE stream — normal hero demo |
-| POST | `/api/scenario/run?scenario=anomaly` | SSE stream — blocked purchase demo |
+| POST | `/api/scenario/run?budget=<tier>` | SSE stream — normal hero demo; `budget` = `cheapass` (€5) \| `mid` (€10) \| `luxury` (€15) |
+| POST | `/api/scenario/run?scenario=anomaly&budget=<tier>` | SSE stream — blocked purchase demo |
 | POST | `/api/decide` | LLM reasoning pipeline — returns `DecisionRecord` (requires `RATIONALGO_ANTHROPIC_KEY`) |
 | GET | `/pricing` | Unprotected x402 pricing discovery — `{"pricing": [...]}` |
 | GET | `/company/*` | 10 x402-protected company-research endpoints (see [Company-research marketplace](#company-research-marketplace-x402-seller)) |
@@ -341,11 +352,12 @@ agent.thinking → [per selected endpoint, in value/price order]
 ### Frontend
 
 Mission Control lives in `frontend/` (`src/routes/index.tsx`) — a single-page ops console.
-On mount it hydrates from `GET /api/state`. The top bar shows **api live** / **offline**
-and exposes **Execute Flow**, **Anomaly**, and **Reset** (no placeholder nav tabs).
+On mount it hydrates from `GET /api/state`. The top bar shows **api live** / **offline**,
+a **budget tier** picker (Cheapass €5 · Mid €10 · Luxury Pro VIP €15), and **Execute Flow**,
+**Anomaly**, and **Reset**.
 
-**Execute Flow** / **Anomaly** call `POST /api/scenario/run` (SSE over fetch — the endpoint
-requires POST, not `EventSource`) and map backend events into the Zustand store
+**Execute Flow** / **Anomaly** call `POST /api/scenario/run?budget=<tier>` (SSE over fetch —
+the endpoint requires POST, not `EventSource`) and map backend events into the Zustand store
 (`src/hooks/useMissionStore.ts`). Backend payloads are normalized in `src/lib/mapBackend.ts`.
 Mock timers in `src/lib/mock/scenarios.ts` remain available when `VITE_USE_API=false`.
 
