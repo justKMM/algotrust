@@ -2,14 +2,10 @@ import { useEffect } from "react";
 import { Play, AlertTriangle, RotateCcw } from "lucide-react";
 import { useMissionStore } from "@/hooks/useMissionStore";
 import { isApiConfigured } from "@/lib/api";
-import { BUDGET_TIERS, type BudgetTier } from "@/lib/budget";
 import { cn } from "@/lib/utils";
 
-const TIER_ORDER: BudgetTier[] = ["cheapass", "mid", "luxury"];
-
 export function TopBar() {
-  const { runScenario, reset, running, apiLive, hydrate, error, budgetTier, setBudgetTier } =
-    useMissionStore();
+  const { runScenario, reset, running, apiLive, hydrate, error } = useMissionStore();
   const apiMode = isApiConfigured();
   const flowDisabled = running || (apiMode && !apiLive);
   const statusLive = apiMode ? apiLive : true;
@@ -20,7 +16,7 @@ export function TopBar() {
 
   return (
     <header className="sticky top-0 z-40 hairline-b bg-background/85 backdrop-blur-md">
-      <div className="mx-auto flex h-12 max-w-[1600px] items-center gap-6 px-4 lg:px-6">
+      <div className="mx-auto flex h-12 max-w-[1100px] items-center gap-6 px-4 lg:px-6">
         <div className="flex items-center gap-2">
           <div className="grid h-5 w-5 place-items-center rounded-[5px] bg-foreground text-background">
             <span className="text-[10px] font-bold leading-none">R</span>
@@ -29,37 +25,7 @@ export function TopBar() {
           <span className="text-[12px] text-muted-foreground">Mission Control</span>
         </div>
 
-        <div className="ml-auto flex flex-wrap items-center gap-3">
-          <div
-            className="flex items-center rounded-md border border-border bg-surface p-0.5"
-            role="group"
-            aria-label="Research budget tier"
-          >
-            {TIER_ORDER.map((tier) => {
-              const meta = BUDGET_TIERS[tier];
-              const active = budgetTier === tier;
-              return (
-                <button
-                  key={tier}
-                  type="button"
-                  disabled={running}
-                  onClick={() => setBudgetTier(tier)}
-                  className={cn(
-                    "rounded-[5px] px-2 py-1 text-[11px] font-medium transition disabled:opacity-50",
-                    active
-                      ? "bg-foreground text-background"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {meta.label}
-                  <span className="ml-1 font-mono tabular-nums opacity-80">€{meta.eur}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="h-4 w-px bg-border" />
-          {/* Status */}
+        <div className="ml-auto flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
             <span className="relative inline-flex h-1.5 w-1.5">
               <span

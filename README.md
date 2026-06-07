@@ -352,8 +352,9 @@ agent.thinking → [per selected endpoint, in value/price order]
 ### Frontend
 
 Mission Control lives in `frontend/` (`src/routes/index.tsx`) — a single-page ops console.
-On mount it hydrates from `GET /api/state`. The top bar shows **api live** / **offline**,
-a **budget tier** picker (Cheapass €5 · Mid €10 · Luxury Pro VIP €15), and **Execute Flow**,
+On mount it hydrates from `GET /api/state`. Layout: centered **Trust Pipeline** (live stage
+ladder), compact **Ops corner** (budget tier + KPIs), and **Decision History** below (click a
+row for the audit drawer). The top bar shows **api live** / **offline** plus **Execute Flow**,
 **Anomaly**, and **Reset**.
 
 **Execute Flow** / **Anomaly** call `POST /api/scenario/run?budget=<tier>` (SSE over fetch —

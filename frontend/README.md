@@ -54,14 +54,11 @@ src/
     api/                       # (reserved) HTTP handlers — webhooks, x402 callbacks
   components/
     mission-control/
-      TopBar.tsx               # brand, budget tier picker, api-live dot, Execute Flow / Anomaly / Reset
-      ReasoningFeed.tsx        # left column — chronological agent events (scrollable)
-      ActiveDecisionCard.tsx   # center column — current decision, KV rows, policy checks
-      TrustPipeline.tsx        # right column — 6-stage vertical ladder
-      TrustMetrics.tsx         # 4 KPI tiles strip
-      DecisionHistoryTable.tsx # dense audit table (fixed height, scrollable)
+      TopBar.tsx               # brand, api-live dot, Execute Flow / Anomaly / Reset
+      TrustPipeline.tsx        # hero panel — centered 6-stage vertical ladder
+      TrustMetrics.tsx         # OpsCorner — compact budget tier + KPI stats (top-right)
+      DecisionHistoryTable.tsx # audit table (fixed height, scrollable; click row → drawer)
       DecisionDetailsDrawer.tsx# slide-out audit trail for one decision
-      ConfidenceMeter.tsx      # 0–1 bar
       StatusPill.tsx           # approved / blocked / verified / pending / failed
       TxHash.tsx               # truncated mono hash + copy + explorer link
     ui/                        # shadcn primitives — Sheet used by drawer; rest vendored
@@ -126,13 +123,12 @@ PIPELINE_STAGES (ordered): reasoning → policy → commit-pre → payment → v
 When the API is reachable (`VITE_USE_API` not `false`, backend `serve` running):
 
 1. **Mount** — `TopBar` calls `hydrate()` → `GET /health` + `GET /api/state` → populates `history`.
-2. **Budget tier** — picker in `TopBar` sets `budgetTier` in the store (default **Mid** / €10).
+2. **Budget tier** — picker in `OpsCorner` sets `budgetTier` in the store (default **Mid** / €10).
 3. **Execute Flow** — `runScenario('normal')` → `POST /api/scenario/run?budget=<tier>` (streaming fetch body).
 4. Each SSE frame is `{ "type": "<event>", "payload": … }` from `backend/internal/scenario/hero.go`.
 5. `handleBackendEvent` in `useMissionStore.ts`:
    - **Advance `pipelineStage`** (0…6) — drives `TrustPipeline`.
-   - **Push a `ScenarioEvent`** — appears in `ReasoningFeed`.
-   - **Patch `activeDecision`** — e.g. set `txPre`, flip `outcomeStatus`.
+   - **Patch `activeDecision`** (internal) — drives pipeline stage state; details land in `history` + drawer.
 6. Each completed purchase (`decision.outcome` or `alert.fired` after `decision.blocked`) is prepended to `history` and metrics are recomputed.
 7. **`research.summary`** marks the run complete; the store re-syncs from `GET /api/state`.
 
@@ -186,8 +182,8 @@ List panels keep a stable footprint during long hero runs — content scrolls in
 
 | Token / utility | Default | Used by |
 |---|---|---|
-| `--panel-workspace-h` / `panel-workspace-h` | 480px (600px on `lg+`) | Agent Activity, Current Decision, Trust Pipeline |
-| `--panel-history-h` / `panel-history-h` | 360px (400px on `lg+`) | Decision History table |
+| `--panel-pipeline-h` / `panel-pipeline-h` | 440px (500px on `lg+`) | Trust Pipeline (center panel) |
+| `--panel-history-h` / `panel-history-h` | 380px (420px on `lg+`) | Decision History table |
 | `panel-scroll-body` | `flex: 1; overflow-y: auto` | Scrollable body inside any panel |
 
 Tune heights in one place: `:root` and the `lg` media query in `src/styles.css`.
@@ -249,7 +245,7 @@ Payload shapes follow `backend/internal/models/decision.go` (`DecisionRecord` wi
 | Backend → UI types | `src/lib/mapBackend.ts` |
 | Store orchestration | `src/hooks/useMissionStore.ts` |
 | Execute Flow button | `src/components/mission-control/TopBar.tsx` |
-| Panel heights / scroll | `src/styles.css` (`--panel-workspace-h`, `--panel-history-h`, `panel-scroll-body`) |
+| Panel heights / scroll | `src/styles.css` (`--panel-pipeline-h`, `--panel-history-h`, `panel-scroll-body`) |
 
 ### 8.6 Environment variables
 
@@ -307,9 +303,10 @@ history are used instead.
 | Want to change… | File |
 |---|---|
 | Color tokens / typography / panel heights | `src/styles.css` |
-| Top bar, budget tier picker, api-live | `src/components/mission-control/TopBar.tsx` + `src/lib/budget.ts` |
+| Top bar actions, api-live | `src/components/mission-control/TopBar.tsx` |
+| Budget tier + compact KPIs | `src/components/mission-control/TrustMetrics.tsx` (`OpsCorner`) + `src/lib/budget.ts` |
 | Add a stage to the pipeline | `src/lib/types.ts` (`PIPELINE_STAGES`) + `TrustPipeline.tsx` |
-| Add a new event type | `src/lib/types.ts` (`ScenarioEventType`) + `ReasoningFeed.tsx` (icon/tone) |
+| Add a new event type | `src/lib/types.ts` (`ScenarioEventType`) + `useMissionStore.ts` handler |
 | Wire backend / change event handling | `src/hooks/useMissionStore.ts`, `src/lib/api.ts`, `src/lib/mapBackend.ts` |
 | Add a webhook | `src/routes/api/public/<name>.ts` (createFileRoute with `server.handlers`) |
 | Add an authenticated RPC | colocate as `*.functions.ts`, call with `useServerFn` |

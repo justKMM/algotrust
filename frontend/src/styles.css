@@ -66,14 +66,14 @@
   --success: #10B981;
   --warn: #F59E0B;
   --danger: #EF4444;
-  --panel-workspace-h: 480px;
-  --panel-history-h: 360px;
+  --panel-pipeline-h: 440px;
+  --panel-history-h: 380px;
 }
 
 @media (min-width: 1024px) {
   :root {
-    --panel-workspace-h: 600px;
-    --panel-history-h: 400px;
+    --panel-pipeline-h: 500px;
+    --panel-history-h: 420px;
   }
 }
 
@@ -132,7 +132,7 @@
 
 @utility row-in { animation: rowIn 700ms ease-out; }
 
-@utility panel-workspace-h { height: var(--panel-workspace-h); }
+@utility panel-pipeline-h { height: var(--panel-pipeline-h); }
 @utility panel-history-h { height: var(--panel-history-h); }
 @utility panel-scroll-body {
   min-height: 0;

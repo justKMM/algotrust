@@ -12,13 +12,17 @@ export function TrustPipeline() {
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <header className="flex h-9 items-center justify-between px-3 hairline-b">
-        <h2 className="text-[12px] font-semibold tracking-tight">Trust Pipeline</h2>
+      <header className="flex shrink-0 flex-col items-center gap-1 px-4 py-5 text-center hairline-b">
+        <h2 className="text-[15px] font-semibold tracking-tight">Trust Pipeline</h2>
+        <p className="max-w-md text-[12px] text-muted-foreground">
+          Reasoning → policy → Algorand → x402 → verification → outcome anchor
+        </p>
         <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-          {Math.min(stage, 6)}/6
+          stage {Math.min(stage, 6)} / 6
         </span>
       </header>
-      <ol className="panel-scroll-body px-3 py-3">
+
+      <ol className="panel-scroll-body mx-auto w-full max-w-md px-6 py-5">
         {PIPELINE_STAGES.map((s, i) => {
           const idx = i + 1;
           const active = stage === idx;
@@ -28,31 +32,27 @@ export function TrustPipeline() {
           const isLast = i === PIPELINE_STAGES.length - 1;
 
           return (
-            <li key={s.key} className="relative grid grid-cols-[16px_1fr] gap-3">
-              {/* Rail */}
+            <li key={s.key} className="relative grid grid-cols-[20px_1fr] gap-4">
               {!isLast && (
                 <span
                   aria-hidden
                   className={cn(
-                    "absolute left-[7px] top-5 h-[calc(100%-12px)] w-px",
+                    "absolute left-[9px] top-6 h-[calc(100%-14px)] w-px",
                     done && !skipped ? "bg-foreground/40" : "bg-border",
                   )}
                 />
               )}
 
-              {/* Node */}
               <div className="relative pt-1.5">
                 <div
                   className={cn(
-                    "relative z-10 grid h-3.5 w-3.5 place-items-center rounded-full border transition-colors",
+                    "relative z-10 grid h-4 w-4 place-items-center rounded-full border transition-colors",
                     errored
                       ? "border-[#EF4444] bg-[#EF4444]"
                       : done
                       ? "border-foreground bg-foreground"
                       : active
                       ? "border-foreground bg-background"
-                      : skipped
-                      ? "border-border bg-background"
                       : "border-border bg-background",
                   )}
                 >
@@ -69,12 +69,11 @@ export function TrustPipeline() {
                 </div>
               </div>
 
-              {/* Body */}
-              <div className="min-w-0 pb-4 pt-0.5">
+              <div className="min-w-0 pb-5 pt-0.5">
                 <div className="flex items-center justify-between gap-2">
                   <span
                     className={cn(
-                      "text-[13px] font-medium leading-tight",
+                      "text-[14px] font-medium leading-tight",
                       skipped && "text-muted-foreground/60 line-through",
                       errored && "text-[#EF4444]",
                       !skipped && !errored && (done || active) ? "text-foreground" : "text-foreground/70",
@@ -95,7 +94,7 @@ export function TrustPipeline() {
                     errored && "text-[#EF4444]/80",
                   )}
                 >
-                  {errored ? "Halted — see alerts" : s.desc}
+                  {errored ? "Halted — inspect decision history" : s.desc}
                 </div>
               </div>
             </li>
