@@ -1,6 +1,6 @@
 import type { BudgetTier } from "@/lib/budget";
 
-const defaultBase = "https://rationalgo-backend.vercel.app";
+const defaultBase = "http://localhost:8080";
 
 export function apiBase(): string {
   return import.meta.env.VITE_API_URL ?? defaultBase;
