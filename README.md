@@ -48,12 +48,15 @@ payment → outcome-verification pipeline, producing its own audited `DecisionRe
 | **Normal** | Knapsack orders endpoints by value/price → each approved purchase: RAv1 commit on Algorand → real on-chain x402 ASA payment to RationAlgo's own seller → confidence-vs-expectation outcome check → RAv1out commit → final `research.summary` |
 | **Anomaly** | The first selected endpoint's price is injected at 10× → policy blocks **that** purchase (alert fires, no Algorand tx, no x402 call) → the agent keeps buying the rest of the plan with its remaining budget |
 
-Trigger via API (backend ready; frontend wiring pending):
+Trigger via API (**`serve` must be running** — the hero demo pays your own `/company/*` endpoints over HTTP):
 
 ```bash
-curl -N -X POST "http://localhost:8080/api/scenario/run"
-curl -N -X POST "http://localhost:8080/api/scenario/run?scenario=anomaly"
+go run ./cmd/rationalgo serve   # terminal 1
+curl.exe -N -X POST "http://localhost:8080/api/scenario/run"
+curl.exe -N -X POST "http://localhost:8080/api/scenario/run?scenario=anomaly"
 ```
+
+On PowerShell, use `curl.exe` (not `curl` — that's an alias for `Invoke-WebRequest` and doesn't support `-N`).
 
 ---
 
@@ -70,7 +73,7 @@ curl -N -X POST "http://localhost:8080/api/scenario/run?scenario=anomaly"
 | `backend/internal/api/` | HTTP handlers (stdlib `net/http`) |
 | `backend/internal/repository/` | Thread-safe in-memory store |
 | `backend/internal/store/` | Dashboard seed data |
-| `backend/internal/util/` | Explorer URLs, 24/25-word mnemonic normalization |
+| `backend/internal/util/` | Explorer URLs, mnemonic normalization, Pera Universal Wallet (BIP39) key resolution |
 | `frontend/` | React audit dashboard |
 
 ---
@@ -104,7 +107,7 @@ flowchart TB
 
     subgraph External["External"]
         TN[Algorand Testnet]
-        GP["GoPlausible x402\n(spike x402 only)"]
+        GP["GoPlausible x402\n(spike x402 pay only)"]
     end
 
     subgraph UI["React dashboard"]
@@ -187,8 +190,9 @@ With `serve` running, the dashboard top bar shows **api live**.
 | `go run ./cmd/rationalgo serve` | Start HTTP API |
 | `go run ./cmd/rationalgo spike algorand` | Legacy hash commit (`RationAlgo:commit:…`) |
 | `go run ./cmd/rationalgo spike provenance` | RAv1 envelope commit on testnet |
-| `go run ./cmd/rationalgo spike x402` | Unpaid 402 probe |
-| `go run ./cmd/rationalgo spike x402 pay` | Real payment + fetch via GoPlausible facilitator |
+| `go run ./cmd/rationalgo spike x402` | Unpaid 402 probe (GoPlausible) |
+| `go run ./cmd/rationalgo spike x402 pay` | Real payment + fetch (GoPlausible facilitator) |
+| `go run ./cmd/rationalgo spike x402 pay-local` | Real payment against local `/company/*` (`serve` must be running) |
 | `go run ./cmd/rationalgo spike all` | All spikes in sequence |
 
 ---
@@ -264,24 +268,23 @@ RATIONALGO_ALGOD_TOKEN=          # leave empty for public AlgoNode
 
 **Mnemonic notes:**
 
-- Algorand uses **25 words**; word 25 is a checksum derived from the first 24.
-- Pera often displays **24 words** — RationAlgo auto-derives the checksum (`internal/util/mnemonic.go`).
-- The passphrase must be the **Algorand recovery phrase** from Pera → Settings → Security (not a BIP-39 seed from another chain).
+- **Pera Universal Wallet** (newer): 24-word **BIP39** seed — RationAlgo derives keys at `m/44'/283'/0'/0/0` automatically.
+- **Legacy Algo25 wallet**: 25-word Algorand passphrase — Pera often shows 24 words; RationAlgo auto-derives the checksum (`internal/util/mnemonic.go`).
 - The address derived from the mnemonic must match `RATIONALGO_WALLET_ADDRESS`.
-
-Fund via the [Algorand Testnet dispenser](https://bank.testnet.algorand.network/) if balance is low.
+- Fund via the [Algorand Testnet dispenser](https://bank.testnet.algorand.network/) and opt into testnet USDC ASA `10458941` for x402 payments.
 
 ### Troubleshooting
 
 | Error | Fix |
 |-------|-----|
-| `mnemonic must be 24 or 25 Algorand words` | Paste the full Pera recovery phrase |
-| `not a valid Algorand recovery phrase` | Wrong words or non-Algorand seed — re-export from Pera |
-| `mnemonic address … does not match` | Mnemonic and address must be the **same** account |
+| `mnemonic address … does not match` | Mnemonic and address must be the **same** Pera account |
+| `account info: HTTP 403` / daily quota | Switch `RATIONALGO_ALGOD_URL` (e.g. Tatum testnet algod) or wait for AlgoNode reset |
+| `HTTP 429` on Tatum | Free tier is 5 req/min — wait 60s and retry |
 | `account info: …` / insufficient balance | Fund via testnet dispenser |
-| x402 returns 404 | Use `/avm/weather` not `/api/json` |
-| x402 pay fails: wallet required | Set `RATIONALGO_WALLET_ADDRESS` + `RATIONALGO_MNEMONIC` in `.env` |
-| x402 pay fails: insufficient ASA | Opt-in + fund testnet USDC ASA `10458941` (0.001 = 1000 units). Mainnet USDC is ASA `31566704` — point `RATIONALGO_ALGOD_URL` at mainnet |
+| x402 pay fails: insufficient ASA | Opt-in + fund testnet USDC ASA `10458941`. Mainnet USDC is ASA `31566704` |
+| x402 pay-local fails | Run `serve` first; fund testnet USDC ASA `10458941` |
+| x402 returns 404 | Use `/avm/weather` not `/api/json` (GoPlausible probe only) |
+| `payment failed with 402` / `underflow … sender amount 0` | Wallet has 0 USDC — add ASA `10458941` in Pera and fund via testnet faucet |
 | `listen tcp :8080: bind: … address already in use` | Stop the old server (**Ctrl+C**) or kill the stale process: `netstat -ano \| findstr :8080` then `taskkill /PID <pid> /F`. Or set `RATIONALGO_HTTP_ADDR=:8081` in `.env`. |
 | `RATIONALGO_ANTHROPIC_KEY not set` | Harmless for hero demo and spikes; required only for `POST /api/decide` |
 
@@ -311,20 +314,20 @@ A 0/1 knapsack (`services/research.Select`) first picks the best-value subset of
 ```
 agent.thinking → [per selected endpoint, in value/price order]
   decision.pending → [policy: live remaining budget + allowlist + anomaly check]
-    → approved: decision.committed → payment.sent → decision.outcome → store
+    → approved: decision.committed → payment.sent (real x402 PayAndFetch + settlement_tx) → decision.outcome → store
     → blocked:  decision.blocked → alert.fired → store (continue with the rest of the plan)
 → research.summary
 ```
 
-### Services (stubs → real logic)
+### Services
 
 | Service | Role |
 |---------|------|
 | `reasoning` | `GenerateResearchDecision` — assembles a `DecisionRecord` per knapsack-selected purchase (deterministic, no API key). `GenerateDecision` — Anthropic LLM for `POST /api/decide` |
 | `policy` | Budget, allowlist, 5× price anomaly (`services/policy/service.go`) |
 | `outcome` | Verifies the confidence a purchased endpoint actually returned vs. what the agent expected to get for the price |
-| `research` | RationAlgo's own company-research data + handlers — 10 priced endpoints, deterministic mock payloads, `/pricing` discovery, knapsack selection (`services/research/`) |
-| `x402` | Client: `RunProbe` + real `PayAndFetch` (402 → sign → settle → 200). Seller: `Seller.Protect` — verifies + settles on-chain ASA payments and paywalls `/company/*` |
+| `research` | RationAlgo's own company-research data + handlers — 10 priced endpoints, deterministic mock payloads, `/pricing` discovery, knapsack selection |
+| `x402` | **Client:** `RunProbe` + `PayAndFetch` (402 → sign ASA → `PAYMENT-SIGNATURE` → 200). **Seller:** `Seller.Protect` — verifies + settles on-chain ASA payments on `/company/*` |
 | `algorand` | `CommitHash`, `CommitProvenance`, `CommitOutcome`, `SubmitSignedTxn` — on-chain commits and settlement via the same wallet |
 
 ### Frontend
@@ -352,9 +355,9 @@ agent.thinking → [per selected endpoint, in value/price order]
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `RATIONALGO_WALLET_ADDRESS` | Yes (spikes) | 58-character Pera Testnet address |
-| `RATIONALGO_MNEMONIC` | Yes (spikes) | 24- or 25-word Algorand passphrase (same account) |
+| `RATIONALGO_MNEMONIC` | Yes (spikes) | 24-word Pera Universal Wallet seed or legacy 25-word Algorand passphrase |
 | `RATIONALGO_ALGOD_TOKEN` | No | Empty for public AlgoNode testnet |
-| `RATIONALGO_ALGOD_URL` | No | Default: `https://testnet-api.algonode.cloud` |
+| `RATIONALGO_ALGOD_URL` | No | Default: `https://testnet-api.algonode.cloud` — switch if free quota exceeded |
 | `RATIONALGO_X402_PROBE_URL` | No | Default: `…/avm/weather` (used by `spike x402`, not the hero demo) |
 | `RATIONALGO_SETTLEMENT_ASSET_ID` | No | ASA the `/company/*` x402 seller charges in. Default: testnet USDC `10458941` |
 | `RATIONALGO_HTTP_ADDR` | No | Default: `:8080` — also used to build the seller's self-referential `EndpointURL`s (`cfg.PublicBaseURL()`) |

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
+	"strings"
 	"time"
 
 	"rationalgo/internal/models"
@@ -53,6 +55,7 @@ type AlgorandCommitter interface {
 // X402Payer pays for and fetches a protected resource.
 type X402Payer interface {
 	PayAndFetch(ctx context.Context, url string, amountEURQ float64) ([]byte, error)
+	LastSettlementTx() string
 }
 
 // Deps holds injected services for the hero orchestrator.
@@ -205,19 +208,27 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 		// or response parsing fails, so every approved purchase still gets a full outcome.
 		actualConfidence := chosen.SuccessRate
 		if deps.X402 != nil {
-			body, err := deps.X402.PayAndFetch(ctx, chosen.URL, chosen.PriceEURQ)
-			if err == nil {
-				emit(EventPaymentSent, map[string]interface{}{
-					"vendor": record.VendorChosen.Name,
-					"amount": record.VendorChosen.PriceEURQ,
-					"bytes":  len(body),
-					"paid":   true,
-				})
+			payURL := researchPayURL(chosen.URL, reasoning.DemoCompany)
+			body, payErr := deps.X402.PayAndFetch(ctx, payURL, chosen.PriceEURQ)
+			payload := map[string]interface{}{
+				"vendor": record.VendorChosen.Name,
+				"amount": record.VendorChosen.PriceEURQ,
+				"url":    payURL,
+				"paid":   payErr == nil,
+			}
+			if payErr != nil {
+				payload["error"] = payErr.Error()
+			} else {
+				payload["bytes"] = len(body)
+				if tx := deps.X402.LastSettlementTx(); tx != "" {
+					payload["settlement_tx"] = tx
+				}
 				var env researchEnvelope
 				if jsonErr := json.Unmarshal(body, &env); jsonErr == nil && env.Confidence > 0 {
 					actualConfidence = env.Confidence
 				}
 			}
+			emit(EventPaymentSent, payload)
 		}
 
 		expectedConfidence := math.Round(chosen.SuccessRate*20) / 20
@@ -332,4 +343,16 @@ func sleep(ctx context.Context, d time.Duration) bool {
 	case <-t.C:
 		return true
 	}
+}
+
+// researchPayURL appends the hero demo company query param to a /company/* catalog URL.
+func researchPayURL(endpointURL, company string) string {
+	if strings.Contains(endpointURL, "company=") {
+		return endpointURL
+	}
+	sep := "?"
+	if strings.Contains(endpointURL, "?") {
+		sep = "&"
+	}
+	return endpointURL + sep + "company=" + url.QueryEscape(company)
 }

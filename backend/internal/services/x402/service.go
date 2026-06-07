@@ -143,7 +143,8 @@ func (s *Service) PayAndFetch(ctx context.Context, url string, amountEURQ float6
 	}
 
 	if paidResp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("x402: payment failed with %d: %s", paidResp.StatusCode, strings.TrimSpace(string(paidBody)))
+		reason := paymentRejectionReason(paidResp.Header, paidBody)
+		return nil, fmt.Errorf("x402: payment failed with %d: %s", paidResp.StatusCode, reason)
 	}
 
 	if hdr := paidResp.Header.Get(headerPaymentResponse); hdr != "" {
@@ -160,4 +161,16 @@ func paymentRequiredHeader(h http.Header) string {
 		return v
 	}
 	return h.Get("X-PAYMENT-REQUIRED")
+}
+
+func paymentRejectionReason(h http.Header, body []byte) string {
+	if hdr := paymentRequiredHeader(h); hdr != "" {
+		if req, err := decodePaymentRequired(hdr); err == nil && req.Error != "" {
+			return req.Error
+		}
+	}
+	if trimmed := strings.TrimSpace(string(body)); trimmed != "" {
+		return trimmed
+	}
+	return "payment rejected"
 }

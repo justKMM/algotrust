@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 
 	"rationalgo/internal/api"
@@ -45,6 +46,7 @@ func runServe(cfg config.Config) {
 	fmt.Printf("listening:   %s\n", cfg.HTTPAddr)
 	fmt.Println("endpoints:   GET /health  GET /api/state  GET /api/decisions")
 	fmt.Println("             POST /api/state/reset  POST /api/scenario/run  POST /api/decide")
+	fmt.Println("             GET /pricing  GET /company/* (x402-protected research marketplace)")
 	fmt.Println()
 	reasoningSvc := reasoning.New(cfg.AnthropicKey)
 	if err := api.NewServer(cfg, reasoningSvc).ListenAndServe(); err != nil {
@@ -114,7 +116,12 @@ func spikeAlgorand(cfg config.Config) {
 
 func spikeX402(cfg config.Config, args []string) {
 	if len(args) > 0 && args[0] == "pay" {
-		spikeX402Pay(cfg)
+		spikeX402Pay(cfg, cfg.X402ProbeURL, "GoPlausible")
+		return
+	}
+	if len(args) > 0 && args[0] == "pay-local" {
+		url := cfg.PublicBaseURL() + "/company/basic-info?company=" + url.QueryEscape(reasoning.DemoCompany)
+		spikeX402Pay(cfg, url, "local /company/basic-info")
 		return
 	}
 	fmt.Println("=== x402 spike (402 probe) ===")
@@ -138,14 +145,14 @@ func spikeX402(cfg config.Config, args []string) {
 	fmt.Println("ok: x402 probe complete (use spike x402 pay for real payment)")
 }
 
-func spikeX402Pay(cfg config.Config) {
-	fmt.Println("=== x402 spike (real payment via GoPlausible) ===")
+func spikeX402Pay(cfg config.Config, targetURL, label string) {
+	fmt.Printf("=== x402 spike (real payment — %s) ===\n", label)
 	svc := x402svc.NewService(cfg)
-	body, err := svc.PayAndFetch(context.Background(), cfg.X402ProbeURL, 0.001)
+	body, err := svc.PayAndFetch(context.Background(), targetURL, 0.001)
 	if err != nil {
 		fail(err)
 	}
-	fmt.Printf("url:           %s\n", cfg.X402ProbeURL)
+	fmt.Printf("url:           %s\n", targetURL)
 	fmt.Printf("body:          %s\n", string(body))
 	if tx := svc.LastSettlementTx(); tx != "" {
 		fmt.Printf("settlement_tx: %s\n", tx)
@@ -195,8 +202,9 @@ func printUsage() {
   go run ./cmd/rationalgo spike all           # hash + RAv1 + x402 probe
   go run ./cmd/rationalgo spike algorand      # legacy hash commitment
   go run ./cmd/rationalgo spike provenance    # RAv1 envelope commitment
-  go run ./cmd/rationalgo spike x402          # unpaid 402 probe
-  go run ./cmd/rationalgo spike x402 pay      # probe + stub fetch
+  go run ./cmd/rationalgo spike x402          # unpaid 402 probe (GoPlausible)
+  go run ./cmd/rationalgo spike x402 pay      # real payment + fetch (GoPlausible)
+  go run ./cmd/rationalgo spike x402 pay-local # real payment against local /company/* (serve must be running)
 
 Setup:
   cp .env.example .env

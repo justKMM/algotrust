@@ -94,12 +94,14 @@ func buildAlgorandPaymentSignature(
 		txns = []types.Transaction{axfer}
 	}
 
-	gid, err := crypto.ComputeGroupID(txns)
-	if err != nil {
-		return "", fmt.Errorf("compute group id: %w", err)
-	}
-	for i := range txns {
-		txns[i].Group = gid
+	if len(txns) > 1 {
+		gid, err := crypto.ComputeGroupID(txns)
+		if err != nil {
+			return "", fmt.Errorf("compute group id: %w", err)
+		}
+		for i := range txns {
+			txns[i].Group = gid
+		}
 	}
 
 	group := make([]string, len(txns))
