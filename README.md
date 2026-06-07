@@ -56,7 +56,7 @@ curl.exe -N -X POST "http://localhost:8080/api/scenario/run"
 curl.exe -N -X POST "http://localhost:8080/api/scenario/run?scenario=anomaly"
 ```
 
-Or start the frontend (`cd frontend && bun run dev`) and click **Execute Flow** / **Anomaly** in Mission Control.
+Or start the frontend (`cd frontend && npm run dev`) and click **Execute Flow** / **Anomaly** in Mission Control.
 
 On PowerShell, use `curl.exe` (not `curl` — that's an alias for `Invoke-WebRequest` and doesn't support `-N`).
 
@@ -76,7 +76,7 @@ On PowerShell, use `curl.exe` (not `curl` — that's an alias for `Invoke-WebReq
 | `backend/internal/repository/` | Thread-safe in-memory store |
 | `backend/internal/store/` | Dashboard seed data |
 | `backend/internal/util/` | Explorer URLs, mnemonic normalization, Pera Universal Wallet (BIP39) key resolution |
-| `frontend/` | React audit dashboard |
+| `frontend/` | React audit dashboard (npm, TanStack Start) |
 
 ---
 
@@ -176,14 +176,17 @@ go run ./pkg/provenance/example
 
 ```bash
 cd frontend
-bun install          # or npm install
-bun run dev          # or npm run dev
+npm install
+npm approve-scripts esbuild   # if npm warns about pending install scripts
+npm run dev
 ```
 
 With `serve` running, the dashboard top bar shows **api live**. Click **Execute Flow** to
 trigger the hero demo (`POST /api/scenario/run`); the UI streams SSE events live and syncs
 decision history from the backend when the run completes. **Anomaly** appends
 `?scenario=anomaly`. Set `VITE_USE_API=false` to fall back to client-side mock timers.
+
+**Node ≥ 20.19** required. Frontend uses **npm** only (`package-lock.json`); do not use Bun or yarn.
 
 ---
 
@@ -318,7 +321,7 @@ A 0/1 knapsack (`services/research.Select`) first picks the best-value subset of
 
 ```
 agent.thinking → [per selected endpoint, in value/price order]
-  decision.pending → [policy: live remaining budget + allowlist + anomaly check]
+  decision.pending → [policy: live remaining budget + 5× price anomaly check]
     → approved: decision.committed → payment.sent (real x402 PayAndFetch + settlement_tx) → decision.outcome → store
     → blocked:  decision.blocked → alert.fired → store (continue with the rest of the plan)
 → research.summary
@@ -329,7 +332,7 @@ agent.thinking → [per selected endpoint, in value/price order]
 | Service | Role |
 |---------|------|
 | `reasoning` | `GenerateResearchDecision` — assembles a `DecisionRecord` per knapsack-selected purchase (deterministic, no API key). `GenerateDecision` — Anthropic LLM for `POST /api/decide` |
-| `policy` | Budget, allowlist, 5× price anomaly (`services/policy/service.go`) |
+| `policy` | Budget + 5× price anomaly (`services/policy/service.go`) |
 | `outcome` | Verifies the confidence a purchased endpoint actually returned vs. what the agent expected to get for the price |
 | `research` | RationAlgo's own company-research data + handlers — 10 priced endpoints, deterministic mock payloads, `/pricing` discovery, knapsack selection |
 | `x402` | **Client:** `RunProbe` + `PayAndFetch` (402 → sign ASA → `PAYMENT-SIGNATURE` → 200). **Seller:** `Seller.Protect` — verifies + settles on-chain ASA payments on `/company/*` |

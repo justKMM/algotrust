@@ -21,11 +21,6 @@ function policyChecksFromResult(
       detail: policy.budget_ok ? ceiling : policy.block_reason ?? "Over budget",
     },
     {
-      name: "Vendor allow-list",
-      passed: policy.vendor_allowed,
-      detail: policy.vendor_allowed ? "Allowlisted vendor" : "Vendor not on allowlist",
-    },
-    {
       name: "Price anomaly",
       passed: !policy.price_anomaly,
       detail: policy.price_anomaly ? (policy.block_reason ?? "Price spike detected") : "Within tolerance",
@@ -42,11 +37,6 @@ function policyChecksFromDashboard(
       name: "Budget envelope",
       passed: policy.budgetOk,
       detail: policy.budgetOk ? `$${cost.toFixed(2)} within envelope` : "Over budget",
-    },
-    {
-      name: "Vendor allow-list",
-      passed: policy.vendorAllowed,
-      detail: policy.vendorAllowed ? "Allowlisted vendor" : "Vendor not on allowlist",
     },
     {
       name: "Price anomaly",

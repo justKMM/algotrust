@@ -24,25 +24,29 @@ Six discrete stages, every one observable, every one auditable on-chain. The UI 
 
 | Concern | Choice | Reason |
 |---|---|---|
-| Framework | **TanStack Start v1** (React 19 + Vite 7) | File-based routing, SSR-ready, server functions for later backend glue without a separate API project. |
+| Framework | **TanStack Start v1** (React 19 + Vite 7) | File-based routing, SSR via Nitro; standard public npm packages only. |
 | Styling | **Tailwind v4** via `src/styles.css` (`@theme`, native CSS vars) | No `tailwind.config.js`; design tokens are CSS variables in `oklch` / hex, easy to theme. |
 | UI primitives | **shadcn/ui** (Radix) | Already vendored under `src/components/ui/`. We only wrap what we need (Sheet for the drawer). |
 | State | **Zustand** (`src/hooks/useMissionStore.ts`) | Live mission state; `runScenario` streams backend SSE or falls back to mock timers. |
 | Animation | **framer-motion** | Stage transitions, reasoning feed slide-ins, decision card swaps. |
 | Icons | **lucide-react** | Consistent stroke weight matches the Linear/Stripe aesthetic. |
 | Fonts | Inter (body), JetBrains Mono (IDs, hashes, timestamps, costs) | Mono everywhere a value is technical/auditable. |
+| Package manager | **npm** (`package-lock.json`) | Public registry only; Node **≥ 20.19**. After install, run `npm approve-scripts esbuild` if prompted. |
 
 ### Why TanStack Start (and not plain Vite + React Router)
-The product needs server-side things later: signature verification for webhooks, x402 callback receivers, Algorand explorer proxying, and authenticated reads of decision history. TanStack Start gives us:
-- `createServerFn` for typed RPC from the React components (replaces ad-hoc REST).
-- `createFileRoute(... { server: { handlers } })` for raw HTTP routes (webhooks, x402 callbacks).
-- One repo, one deploy (Cloudflare Workers), no CORS dance.
+The product needs server-side things later: signature verification for webhooks, x402 callback receivers, and authenticated reads of decision history. TanStack Start gives us file-based routing, SSR, and server functions in one Vite project — configured with public packages (`@tanstack/react-start`, `nitro`, `@vitejs/plugin-react`) in `vite.config.ts`.
+
+**Node:** TanStack Start 1.16x expects **Node ≥ 20.19** (22.12+ recommended). Upgrade if `npm run dev` fails engine checks.
 
 ---
 
 ## 3. Repo Layout
 
 ```
+frontend/
+  package.json                 # dependencies + scripts
+  package-lock.json            # npm lockfile — commit this; use npm only
+  vite.config.ts               # TanStack Start + Vite (public npm plugins)
 src/
   routes/
     __root.tsx                 # shell, head, providers, <Outlet/>
@@ -254,9 +258,12 @@ go run ./cmd/rationalgo serve    # :8080
 
 ```bash
 cd frontend
-bun install          # or npm install
-bun run dev          # Vite + TanStack Start
+npm install
+npm approve-scripts esbuild   # if npm warns about pending install scripts
+npm run dev          # Vite + TanStack Start — http://localhost:3000
 ```
+
+Uses **npm** only (`package-lock.json`). Requires Node **≥ 20.19**. If install or dev fails with missing modules, delete `node_modules` and run `npm install` again.
 
 Open the preview. The top bar should show **api live** when the backend is reachable.
 Click **Execute Flow** for the hero demo (Atlas Robotics knapsack research + real x402).

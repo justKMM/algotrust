@@ -25,7 +25,6 @@ type VendorOption struct {
 	TrustScore   float64 `json:"trust_score"`
 	SuccessRate  float64 `json:"success_rate"`
 	AvgLatencyMs int     `json:"avg_latency_ms,omitempty"`
-	Allowed      bool    `json:"allowed"`
 	Description  string  `json:"description,omitempty"`
 }
 
@@ -182,10 +181,8 @@ type AppState struct {
 	Balance        float64    `json:"balance"`
 	Spent          float64    `json:"spent"`
 	DailyLimit     float64    `json:"dailyLimit"`
-	Decisions      []Decision `json:"decisions"`
-	Vendors        []Vendor   `json:"vendors"`
-	AllowedVendors []string   `json:"allowedVendors"`
-	BlockedVendors []string   `json:"blockedVendors"`
-	Alerts         []Alert    `json:"alerts"`
+	Decisions []Decision `json:"decisions"`
+	Vendors   []Vendor   `json:"vendors"`
+	Alerts    []Alert    `json:"alerts"`
 	SelectedID     *string    `json:"selectedId"`
 }

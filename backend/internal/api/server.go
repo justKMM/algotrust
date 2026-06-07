@@ -64,7 +64,6 @@ func buildDeps(cfg config.Config, store *repository.Store, reasoningSvc *reasoni
 		Store:      store,
 		Vendors:    vendors.GetResearchEndpoints,
 		Policy:     policy.Evaluate,
-		Allowed:    func() []string { return state.AllowedVendors },
 		PriceHist:  vendors.GetPriceHistory,
 		Inject:     policy.InjectAnomalyPrice,
 		AgentID:    state.Agent,
@@ -240,7 +239,6 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 
 	vendorSvc := vendor.NewService(s.cfg.PublicBaseURL())
 	vendors := vendorSvc.GetResearchEndpoints()
-	state := s.store.State()
 
 	// Evaluate policy against the primary (paid) vendor with default budget parameters.
 	pol := policy.Evaluate(
@@ -248,7 +246,6 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		vendors[0].PriceEURQ,
 		0.0,
 		10.0,
-		state.AllowedVendors,
 		vendorSvc.GetPriceHistory(),
 	)
 

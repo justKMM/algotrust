@@ -66,8 +66,7 @@ type Deps struct {
 	X402       X402Payer
 	Store      *repository.Store
 	Vendors    func() []models.VendorOption
-	Policy     func(models.VendorOption, float64, float64, float64, []string, map[string][]float64) models.PolicyResult
-	Allowed    func() []string
+	Policy     func(models.VendorOption, float64, float64, float64, map[string][]float64) models.PolicyResult
 	PriceHist  func() map[string][]float64
 	Inject     func(map[string][]float64, string, float64) map[string][]float64
 	AgentID    string
@@ -154,7 +153,6 @@ func runScenario(ctx context.Context, scenario ScenarioType, deps Deps, ch chan<
 			chosen.PriceEURQ,
 			spent,
 			budget,
-			deps.Allowed(),
 			priceHist,
 		)
 		record.Policy = policyResult
