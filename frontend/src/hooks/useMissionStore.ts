@@ -1,7 +1,17 @@
 import { create } from "zustand";
-import type { DecisionRecord, ScenarioEvent } from "@/lib/types";
-import { seedHistory } from "@/lib/mock/decisions";
+import type { DecisionRecord, ScenarioEvent, ScenarioEventType } from "@/lib/types";
+import {
+  checkHealth,
+  fetchDashboardState,
+  isApiConfigured,
+  resetDashboardState,
+  runScenarioStream,
+  type BackendDecision,
+  type BackendScenarioEvent,
+} from "@/lib/api";
+import { mapBackendDecision, mapBackendRecord, mergeDecisionRecord } from "@/lib/mapBackend";
 import { buildScenario, type ScenarioKind } from "@/lib/mock/scenarios";
+import { seedHistory } from "@/lib/mock/decisions";
 
 interface Metrics {
   trustScore: number;
@@ -13,13 +23,17 @@ interface Metrics {
 interface MissionState {
   events: ScenarioEvent[];
   activeDecision: DecisionRecord | null;
-  pipelineStage: number; // 0..6
+  pipelineStage: number;
   history: DecisionRecord[];
   metrics: Metrics;
   selectedDecisionId: string | null;
   running: boolean;
+  apiLive: boolean;
+  error: string | null;
   _timers: ReturnType<typeof setTimeout>[];
+  _abort: AbortController | null;
 
+  hydrate: () => Promise<void>;
   runScenario: (kind: ScenarioKind) => void;
   reset: () => void;
   selectDecision: (id: string | null) => void;
@@ -39,73 +53,353 @@ function computeMetrics(history: DecisionRecord[]): Metrics {
   };
 }
 
-const initialHistory = seedHistory();
+function historyFromState(decisions: BackendDecision[]): DecisionRecord[] {
+  return [...decisions].reverse().map(mapBackendDecision);
+}
+
+const mockHistory = seedHistory();
+const useApi = isApiConfigured();
 
 export const useMissionStore = create<MissionState>((set, get) => ({
   events: [],
   activeDecision: null,
   pipelineStage: 0,
-  history: initialHistory,
-  metrics: computeMetrics(initialHistory),
+  history: useApi ? [] : mockHistory,
+  metrics: computeMetrics(useApi ? [] : mockHistory),
   selectedDecisionId: null,
   running: false,
+  apiLive: false,
+  error: null,
   _timers: [],
+  _abort: null,
+
+  hydrate: async () => {
+    if (!isApiConfigured()) return;
+    const live = await checkHealth();
+    set({ apiLive: live });
+    if (!live) return;
+    try {
+      const state = await fetchDashboardState();
+      const history = historyFromState(state.decisions);
+      set({ history, metrics: computeMetrics(history), error: null });
+    } catch (err) {
+      set({ apiLive: false, error: err instanceof Error ? err.message : "Failed to load state" });
+    }
+  },
 
   runScenario: (kind) => {
-    const state = get();
-    state._timers.forEach(clearTimeout);
-    const script = buildScenario(kind);
-    set({
-      events: [],
-      activeDecision: script.decision,
-      pipelineStage: 0,
-      running: true,
-      _timers: [],
-    });
-
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    script.steps.forEach((step, idx) => {
-      const t = setTimeout(() => {
-        const s = get();
-        const evt: ScenarioEvent | null = step.event
-          ? {
-              id: `${script.decision.id}-${idx}`,
-              timestamp: new Date().toISOString(),
-              ...step.event,
-            }
-          : null;
-        const nextDecision = step.patch && s.activeDecision
-          ? { ...s.activeDecision, ...step.patch }
-          : s.activeDecision;
-        set({
-          pipelineStage: step.stage,
-          events: evt ? [...s.events, evt] : s.events,
-          activeDecision: nextDecision,
-        });
-        if (step.finalize && nextDecision) {
-          const newHistory = [nextDecision, ...s.history];
-          set({
-            history: newHistory,
-            metrics: computeMetrics(newHistory),
-            running: false,
-          });
-        }
-      }, step.delay);
-      timers.push(t);
-    });
-    set({ _timers: timers });
+    if (isApiConfigured()) {
+      void runLiveScenario(kind, set, get);
+      return;
+    }
+    runMockScenario(kind, set, get);
   },
 
   reset: () => {
-    get()._timers.forEach(clearTimeout);
+    const state = get();
+    state._abort?.abort();
+    state._timers.forEach(clearTimeout);
     set({
       events: [],
       activeDecision: null,
       pipelineStage: 0,
       running: false,
+      error: null,
       _timers: [],
+      _abort: null,
     });
+    if (isApiConfigured()) {
+      void resetDashboardState()
+        .then((state) => {
+          const history = historyFromState(state.decisions);
+          set({ history, metrics: computeMetrics(history) });
+        })
+        .catch((err) => {
+          set({ error: err instanceof Error ? err.message : "Reset failed" });
+        });
+    }
   },
 
   selectDecision: (id) => set({ selectedDecisionId: id }),
 }));
+
+function pushEvent(
+  set: (partial: Partial<MissionState> | ((s: MissionState) => Partial<MissionState>)) => void,
+  get: () => MissionState,
+  type: ScenarioEventType,
+  message: string,
+): void {
+  const idx = get().events.length;
+  const evt: ScenarioEvent = {
+    id: `evt-${Date.now()}-${idx}`,
+    timestamp: new Date().toISOString(),
+    type,
+    message,
+  };
+  set((s) => ({ events: [...s.events, evt] }));
+}
+
+function finalizeActive(
+  set: (partial: Partial<MissionState> | ((s: MissionState) => Partial<MissionState>)) => void,
+  get: () => MissionState,
+): void {
+  const s = get();
+  if (!s.activeDecision) return;
+  const newHistory = [s.activeDecision, ...s.history];
+  set({
+    history: newHistory,
+    metrics: computeMetrics(newHistory),
+    activeDecision: null,
+    pipelineStage: 0,
+  });
+}
+
+function handleBackendEvent(
+  event: BackendScenarioEvent,
+  set: (partial: Partial<MissionState> | ((s: MissionState) => Partial<MissionState>)) => void,
+  get: () => MissionState,
+  budget?: number,
+): void {
+  switch (event.type) {
+    case "agent.thinking": {
+      const payload = event.payload as { intent?: string; company?: string; budget_eurq?: number };
+      set({ pipelineStage: 1 });
+      pushEvent(
+        set,
+        get,
+        "agent.thinking",
+        payload.intent ?? `Researching ${payload.company ?? "target company"} within budget.`,
+      );
+      break;
+    }
+    case "decision.pending": {
+      const record = mapBackendRecord(event.payload, budget);
+      set({ activeDecision: record, pipelineStage: 1 });
+      pushEvent(
+        set,
+        get,
+        "decision.pending",
+        `Selected ${record.vendor} · $${record.cost.toFixed(2)} · confidence ${record.confidence.toFixed(2)}`,
+      );
+      break;
+    }
+    case "decision.committed": {
+      const record = mapBackendRecord(event.payload, budget);
+      const passed = record.policyChecks?.filter((c) => c.passed).length ?? 0;
+      const total = record.policyChecks?.length ?? 0;
+      set((s) => ({
+        pipelineStage: 3,
+        activeDecision: s.activeDecision
+          ? mergeDecisionRecord(s.activeDecision, record)
+          : record,
+      }));
+      pushEvent(set, get, "policy.approved", `Policy: ${passed}/${total} checks passed.`);
+      pushEvent(
+        set,
+        get,
+        "decision.committed",
+        record.txPre
+          ? `Reasoning anchored on Algorand · ${record.txPre.slice(0, 10)}…`
+          : "Reasoning committed.",
+      );
+      break;
+    }
+    case "payment.sent": {
+      const payload = event.payload as {
+        vendor?: string;
+        amount?: number;
+        paid?: boolean;
+        settlement_tx?: string;
+        error?: string;
+      };
+      set({ pipelineStage: 4 });
+      if (payload.paid) {
+        pushEvent(
+          set,
+          get,
+          "payment.sent",
+          payload.settlement_tx
+            ? `x402 payment settled · ${payload.settlement_tx.slice(0, 10)}…`
+            : `x402 payment sent to ${payload.vendor ?? "vendor"}.`,
+        );
+      } else {
+        pushEvent(
+          set,
+          get,
+          "payment.sent",
+          payload.error ?? "x402 payment failed.",
+        );
+      }
+      break;
+    }
+    case "decision.outcome": {
+      const record = mapBackendRecord(event.payload, budget);
+      set((s) => ({
+        pipelineStage: record.txOutcome ? 6 : 5,
+        activeDecision: s.activeDecision
+          ? mergeDecisionRecord(s.activeDecision, {
+              ...record,
+              outcomeStatus: record.outcomeStatus,
+              actualOutcome: record.actualOutcome ?? record.predictedOutcome,
+            })
+          : record,
+      }));
+      pushEvent(
+        set,
+        get,
+        "decision.outcome",
+        record.actualOutcome
+          ? `Outcome verified · ${record.actualOutcome}`
+          : "Outcome recorded.",
+      );
+      if (record.txOutcome) {
+        pushEvent(
+          set,
+          get,
+          "decision.committed",
+          `Outcome receipt anchored · ${record.txOutcome.slice(0, 10)}…`,
+        );
+      }
+      finalizeActive(set, get);
+      break;
+    }
+    case "decision.blocked": {
+      const record = mapBackendRecord(event.payload, budget);
+      set((s) => ({
+        pipelineStage: 2,
+        activeDecision: s.activeDecision
+          ? mergeDecisionRecord(s.activeDecision, { ...record, policyStatus: "blocked" })
+          : { ...record, policyStatus: "blocked" },
+      }));
+      pushEvent(
+        set,
+        get,
+        "decision.blocked",
+        record.policyChecks?.find((c) => !c.passed)?.detail ?? "Purchase blocked by policy.",
+      );
+      break;
+    }
+    case "alert.fired": {
+      const alert = event.payload as { message?: string };
+      pushEvent(set, get, "alert.fired", alert.message ?? "Policy alert fired.");
+      finalizeActive(set, get);
+      break;
+    }
+    case "research.summary": {
+      const summary = event.payload as {
+        company?: string;
+        purchased?: string[];
+        blocked?: string[];
+        spent_eurq?: number;
+        budget_eurq?: number;
+      };
+      const purchased = summary.purchased?.length ?? 0;
+      const blocked = summary.blocked?.length ?? 0;
+      set({ pipelineStage: 6, running: false });
+      pushEvent(
+        set,
+        get,
+        "research.summary",
+        `Research complete for ${summary.company ?? "company"} · ${purchased} purchased · ${blocked} blocked · $${(summary.spent_eurq ?? 0).toFixed(2)} spent of $${(summary.budget_eurq ?? 0).toFixed(2)}.`,
+      );
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+async function runLiveScenario(
+  kind: ScenarioKind,
+  set: (partial: Partial<MissionState> | ((s: MissionState) => Partial<MissionState>)) => void,
+  get: () => MissionState,
+): Promise<void> {
+  const state = get();
+  state._abort?.abort();
+  state._timers.forEach(clearTimeout);
+
+  const abort = new AbortController();
+  set({
+    events: [],
+    activeDecision: null,
+    pipelineStage: 0,
+    running: true,
+    error: null,
+    _timers: [],
+    _abort: abort,
+  });
+
+  let budget: number | undefined;
+  try {
+    const dashboard = await fetchDashboardState();
+    budget = dashboard.dailyLimit;
+  } catch {
+    // scenario still runs; policy detail strings omit budget ceiling
+  }
+
+  try {
+    await runScenarioStream(
+      kind,
+      (event) => handleBackendEvent(event, set, get, budget),
+      abort.signal,
+    );
+    set({ running: false, _abort: null });
+    void get().hydrate();
+  } catch (err) {
+    if (abort.signal.aborted) return;
+    set({
+      running: false,
+      _abort: null,
+      error: err instanceof Error ? err.message : "Scenario failed",
+    });
+  }
+}
+
+function runMockScenario(
+  kind: ScenarioKind,
+  set: (partial: Partial<MissionState> | ((s: MissionState) => Partial<MissionState>)) => void,
+  get: () => MissionState,
+): void {
+  const state = get();
+  state._timers.forEach(clearTimeout);
+  const script = buildScenario(kind);
+  set({
+    events: [],
+    activeDecision: script.decision,
+    pipelineStage: 0,
+    running: true,
+    _timers: [],
+  });
+
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  script.steps.forEach((step, idx) => {
+    const t = setTimeout(() => {
+      const s = get();
+      const evt: ScenarioEvent | null = step.event
+        ? {
+            id: `${script.decision.id}-${idx}`,
+            timestamp: new Date().toISOString(),
+            ...step.event,
+          }
+        : null;
+      const nextDecision = step.patch && s.activeDecision
+        ? { ...s.activeDecision, ...step.patch }
+        : s.activeDecision;
+      set({
+        pipelineStage: step.stage,
+        events: evt ? [...s.events, evt] : s.events,
+        activeDecision: nextDecision,
+      });
+      if (step.finalize && nextDecision) {
+        const newHistory = [nextDecision, ...s.history];
+        set({
+          history: newHistory,
+          metrics: computeMetrics(newHistory),
+          running: false,
+        });
+      }
+    }, step.delay);
+    timers.push(t);
+  });
+  set({ _timers: timers });
+}

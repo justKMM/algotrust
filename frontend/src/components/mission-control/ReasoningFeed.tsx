@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Brain, AlertOctagon, CheckCircle2, Send, Anchor, Bell, Clock, ShieldCheck } from "lucide-react";
+import { Brain, AlertOctagon, CheckCircle2, Send, Anchor, Bell, Clock, ShieldCheck, Ban, Flag } from "lucide-react";
 import { useMissionStore } from "@/hooks/useMissionStore";
 import type { ScenarioEvent, ScenarioEventType } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -10,9 +10,11 @@ const META: Record<ScenarioEventType, { icon: React.ComponentType<{ className?: 
   "policy.approved":   { icon: ShieldCheck,   tone: "text-[#10B981]",             label: "policy" },
   "policy.blocked":    { icon: AlertOctagon,  tone: "text-[#EF4444]",             label: "policy" },
   "decision.committed":{ icon: Anchor,        tone: "text-foreground",            label: "algorand" },
+  "decision.blocked":  { icon: Ban,           tone: "text-[#EF4444]",             label: "decision" },
   "payment.sent":      { icon: Send,          tone: "text-foreground",            label: "x402" },
   "decision.outcome":  { icon: CheckCircle2,  tone: "text-[#10B981]",             label: "outcome" },
   "alert.fired":       { icon: Bell,          tone: "text-[#EF4444]",             label: "alert" },
+  "research.summary":  { icon: Flag,          tone: "text-[#10B981]",             label: "summary" },
 };
 
 function fmt(ts: string) {

@@ -24,9 +24,9 @@ Built for the [Algorand x402 Agentic Commerce Hackathon](https://luma.com/agenti
 | Reasoning / policy / outcome | ✅ | Hero uses deterministic per-purchase reasoning; `POST /api/decide` uses Anthropic when key is set |
 | Hero orchestrator | ✅ | `scenario/hero.go` — budgeted multi-endpoint knapsack research (normal + anomaly) |
 | HTTP API | ✅ | State, decisions, scenario SSE stream |
-| Dashboard → API | ✅ | Hydrates from `GET /api/state`; demo still client-side |
-| Real EURQ `PayAndFetch` | ✅ | GoPlausible x402 v2 — ASA transfer + facilitator settlement |
-| Frontend → scenario SSE | 🔜 | Replace `demoScenario.ts` timers with backend stream |
+| Dashboard → API | ✅ | Hydrates from `GET /api/state` on mount; **Execute Flow** runs hero demo |
+| Real EURQ `PayAndFetch` | ✅ | Hero demo pays local `/company/*` seller; GoPlausible for spikes only |
+| Frontend → scenario SSE | ✅ | `POST /api/scenario/run` streamed via `src/lib/api.ts` → `useMissionStore` |
 
 ---
 
@@ -48,13 +48,15 @@ payment → outcome-verification pipeline, producing its own audited `DecisionRe
 | **Normal** | Knapsack orders endpoints by value/price → each approved purchase: RAv1 commit on Algorand → real on-chain x402 ASA payment to RationAlgo's own seller → confidence-vs-expectation outcome check → RAv1out commit → final `research.summary` |
 | **Anomaly** | The first selected endpoint's price is injected at 10× → policy blocks **that** purchase (alert fires, no Algorand tx, no x402 call) → the agent keeps buying the rest of the plan with its remaining budget |
 
-Trigger via API (**`serve` must be running** — the hero demo pays your own `/company/*` endpoints over HTTP):
+Trigger via API or the dashboard (**`serve` must be running** — the hero demo pays your own `/company/*` endpoints over HTTP):
 
 ```bash
 go run ./cmd/rationalgo serve   # terminal 1
 curl.exe -N -X POST "http://localhost:8080/api/scenario/run"
 curl.exe -N -X POST "http://localhost:8080/api/scenario/run?scenario=anomaly"
 ```
+
+Or start the frontend (`cd frontend && bun run dev`) and click **Execute Flow** / **Anomaly** in Mission Control.
 
 On PowerShell, use `curl.exe` (not `curl` — that's an alias for `Invoke-WebRequest` and doesn't support `-N`).
 
@@ -126,7 +128,7 @@ flowchart TB
     SCEN --> STORE
     CAT --> REASON
     FE -->|GET /api/state| API
-    FE -.->|POST /api/scenario/run SSE — pending| API
+    FE -->|POST /api/scenario/run SSE| API
 ```
 
 The hero demo's x402 payments are now **self-referential**: the agent pays RationAlgo's
@@ -174,11 +176,14 @@ go run ./pkg/provenance/example
 
 ```bash
 cd frontend
-bun install
-bun run dev
+bun install          # or npm install
+bun run dev          # or npm run dev
 ```
 
-With `serve` running, the dashboard top bar shows **api live**.
+With `serve` running, the dashboard top bar shows **api live**. Click **Execute Flow** to
+trigger the hero demo (`POST /api/scenario/run`); the UI streams SSE events live and syncs
+decision history from the backend when the run completes. **Anomaly** appends
+`?scenario=anomaly`. Set `VITE_USE_API=false` to fall back to client-side mock timers.
 
 ---
 
@@ -332,8 +337,12 @@ agent.thinking → [per selected endpoint, in value/price order]
 
 ### Frontend
 
-- Loads seed/historical state from `GET /api/state` on mount.
-- **Run demo scenario** still uses client-side `demoScenario.ts` timers — wire to `POST /api/scenario/run` SSE next.
+Mission Control lives in `frontend/` (`src/routes/index.tsx`). On mount it hydrates from
+`GET /api/state`. **Execute Flow** / **Anomaly** call `POST /api/scenario/run` (SSE over
+fetch — the endpoint requires POST, not `EventSource`) and map backend events into the
+Zustand store (`src/hooks/useMissionStore.ts`). Backend payloads are normalized in
+`src/lib/mapBackend.ts`. Mock timers in `src/lib/mock/scenarios.ts` remain available when
+`VITE_USE_API=false`.
 
 ---
 
@@ -346,7 +355,7 @@ agent.thinking → [per selected endpoint, in value/price order]
 | **Infra** | `pkg/provenance/` RAv1 + SPEC | ✅ |
 | **2** | Catalog, services, hero orchestrator, SSE API | ✅ |
 | **3** | Real EURQ `PayAndFetch` | ✅ |
-| **4** | Frontend scenario SSE + live demo UI | 🔜 |
+| **4** | Frontend scenario SSE + live demo UI | ✅ |
 
 ---
 
@@ -363,7 +372,7 @@ agent.thinking → [per selected endpoint, in value/price order]
 | `RATIONALGO_HTTP_ADDR` | No | Default: `:8080` — also used to build the seller's self-referential `EndpointURL`s (`cfg.PublicBaseURL()`) |
 | `RATIONALGO_ANTHROPIC_KEY` | No | Anthropic API key for `POST /api/decide` (hero demo works without it) |
 | `VITE_API_URL` | No | Frontend API base (default: `http://localhost:8080`) |
-| `VITE_USE_API` | No | Set to `false` to skip API and use local mock only |
+| `VITE_USE_API` | No | Default: API enabled. Set to `false` for client-side mock scenario only |
 
 Never commit `backend/.env`.
 

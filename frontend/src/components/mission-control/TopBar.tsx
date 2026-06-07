@@ -1,11 +1,21 @@
+import { useEffect } from "react";
 import { Play, AlertTriangle, RotateCcw } from "lucide-react";
 import { useMissionStore } from "@/hooks/useMissionStore";
+import { isApiConfigured } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const TABS = ["Mission Control", "Decision History", "Audit Trail"] as const;
 
 export function TopBar() {
-  const { runScenario, reset, running } = useMissionStore();
+  const { runScenario, reset, running, apiLive, hydrate, error } = useMissionStore();
+  const apiMode = isApiConfigured();
+  const flowDisabled = running || (apiMode && !apiLive);
+  const statusLive = apiMode ? apiLive : true;
+
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
+
   return (
     <header className="sticky top-0 z-40 hairline-b bg-background/85 backdrop-blur-md">
       <div className="mx-auto flex h-12 max-w-[1600px] items-center gap-6 px-4 lg:px-6">
@@ -39,24 +49,40 @@ export function TopBar() {
           {/* Status */}
           <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
             <span className="relative inline-flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75 pulse-dot-glow text-[#10B981]" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#10B981]" />
+              <span
+                className={cn(
+                  "absolute inline-flex h-full w-full rounded-full opacity-75 pulse-dot-glow",
+                  statusLive ? "bg-[#10B981] text-[#10B981]" : "bg-muted-foreground text-muted-foreground",
+                )}
+              />
+              <span
+                className={cn(
+                  "relative inline-flex h-1.5 w-1.5 rounded-full",
+                  statusLive ? "bg-[#10B981]" : "bg-muted-foreground",
+                )}
+              />
             </span>
-            <span>Online</span>
+            <span>{apiMode ? (apiLive ? "api live" : "offline") : "mock"}</span>
           </div>
+
+          {error && (
+            <span className="max-w-[200px] truncate text-[11px] text-[#EF4444]" title={error}>
+              {error}
+            </span>
+          )}
 
           <div className="h-4 w-px bg-border" />
 
           <button
-            disabled={running}
+            disabled={flowDisabled}
             onClick={() => runScenario("normal")}
             className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-[12px] font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50"
           >
             <Play className="h-3 w-3" />
-            Run Scenario
+            Execute Flow
           </button>
           <button
-            disabled={running}
+            disabled={flowDisabled}
             onClick={() => runScenario("anomaly")}
             className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-[12px] font-medium text-[#F59E0B] transition hover:bg-surface-2 disabled:opacity-50"
           >

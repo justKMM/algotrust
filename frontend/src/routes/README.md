@@ -9,7 +9,7 @@ is `src/routes/__root.tsx`.
 
 | File | URL |
 | --- | --- |
-| `index.tsx` | `/` |
+| `index.tsx` | `/` — Mission Control (hero demo UI) |
 | `about.tsx` | `/about` |
 | `users/index.tsx` | `/users` |
 | `users/$id.tsx` | `/users/:id` (dynamic — bare `$`, no curly braces) |

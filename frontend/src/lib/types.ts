@@ -27,9 +27,11 @@ export type ScenarioEventType =
   | "policy.approved"
   | "policy.blocked"
   | "decision.committed"
+  | "decision.blocked"
   | "payment.sent"
   | "decision.outcome"
-  | "alert.fired";
+  | "alert.fired"
+  | "research.summary";
 
 export interface ScenarioEvent {
   id: string;
