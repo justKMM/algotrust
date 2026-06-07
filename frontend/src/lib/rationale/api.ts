@@ -1,6 +1,6 @@
 import type { AppState } from "./types";
 
-const defaultBase = "http://localhost:8080";
+const defaultBase = "https://rationalgo-backend.vercel.app";
 
 function apiBase(): string {
   return import.meta.env.VITE_API_URL ?? defaultBase;
